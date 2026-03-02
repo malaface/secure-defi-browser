@@ -1,0 +1,94 @@
+# Secure DeFi Browser - Brave + Gluetun VPN
+#
+# All browser traffic is routed through a WireGuard VPN tunnel (ProtonVPN).
+# Access via Cloudflare Tunnel + Zero Trust (recommended) or localhost only.
+#
+# PREREQUISITES:
+# 1. Generate WireGuard credentials from your VPN provider
+# 2. Copy .env.example to .env and fill in your credentials
+#
+# USAGE:
+#   docker compose up -d
+#   docker compose logs -f
+#   docker compose down
+
+services:
+  # ──────────────────────────────────────────────
+  # VPN Gateway (Gluetun)
+  # All network traffic from the browser exits here.
+  # ──────────────────────────────────────────────
+  gluetun:
+    image: qmcgaw/gluetun:v3.40.0
+    container_name: secure-browser-gluetun
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      # Brave KasmVNC HTTPS - bound to localhost only
+      - "127.0.0.1:6901:6901"
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:-protonvpn}
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
+      - SERVER_COUNTRIES=${VPN_SERVER_COUNTRIES:-Switzerland}
+      - FIREWALL_INPUT_PORTS=6901
+      - FIREWALL_OUTBOUND_SUBNETS=${FIREWALL_OUTBOUND_SUBNETS:-172.16.0.0/12}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - gluetun_data:/gluetun
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8000/v1/publicip/ip || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ──────────────────────────────────────────────
+  # Brave Browser (KasmVNC)
+  # Runs inside Gluetun's network namespace.
+  # Zero direct internet access - everything goes through the VPN.
+  # ──────────────────────────────────────────────
+  brave:
+    image: kasmweb/brave:1.14.0
+    container_name: secure-browser-brave
+    restart: unless-stopped
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    shm_size: "2gb"
+    environment:
+      - VNC_PW=${BROWSER_PASSWORD}
+      - VNC_USER=${BROWSER_USER:-user}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - brave_profile:/home/kasm-user/.config/BraveSoftware
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  gluetun_data:
+  brave_profile:

@@ -1,0 +1,17 @@
+# Cloudflare Tunnel Configuration
+#
+# Replace YOUR_TUNNEL_ID with the real tunnel ID from Cloudflare Dashboard.
+# Replace YOUR_HOSTNAME with your domain (e.g., defi.example.com).
+
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /etc/cloudflared/credentials/YOUR_TUNNEL_ID.json
+
+ingress:
+  - hostname: YOUR_HOSTNAME
+    service: https://secure-browser-gluetun:6901
+    originRequest:
+      noTLSVerify: true  # Required: KasmVNC uses self-signed HTTPS
+      connectTimeout: 30s
+
+  # Catch-all (must be last)
+  - service: http_status:404

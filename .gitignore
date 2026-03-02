@@ -1,0 +1,17 @@
+# Environment files with secrets
+.env
+*.env
+!.env.example
+
+# Cloudflare credentials
+*.json
+!package.json
+
+# Volumes and data
+gluetun_data/
+brave_profile/
+kasm_profile/
+
+# OS files
+.DS_Store
+Thumbs.db
