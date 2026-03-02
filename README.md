@@ -3,25 +3,31 @@
 A hardened, VPN-routed remote browser for DeFi and Web3 operations. All traffic exits through a WireGuard VPN tunnel — your real IP is never exposed to the sites you visit.
 
 ```
-┌─────────────────────────────────────────────────┐
-│              Docker Host                        │
-│                                                 │
-│  ┌───────────┐    network_mode     ┌─────────┐  │
-│  │  Gluetun  │◄════════════════════│  Brave  │  │
-│  │  (VPN)    │  all traffic flows  │ (Kasm)  │  │
-│  │           │  through VPN only   │         │  │
-│  └─────┬─────┘                     └─────────┘  │
-│        │ WireGuard                               │
-│        ▼                                         │
-│   ┌─────────┐         ┌──────────────┐           │
-│   │ ProtonVPN│         │  Cloudflare  │           │
-│   │ Server  │         │  Tunnel      │           │
-│   └────┬────┘         └──────┬───────┘           │
-└────────┼─────────────────────┼───────────────────┘
-         │                     │
-         ▼                     ▼
-    Public Internet      Zero Trust Access
-    (VPN exit IP)        (your domain)
+┌──────────────────────────────────────────────────────────┐
+│                     Docker Host                          │
+│                                                          │
+│  ┌───────────┐    network_mode     ┌──────────────────┐  │
+│  │  Gluetun  │◄════════════════════│  Brave (KasmVNC) │  │
+│  │  (VPN)    │  all traffic flows  │  Port 6901/HTTPS │  │
+│  │           │  through VPN only   │                  │  │
+│  └─────┬─────┘                     └──────────────────┘  │
+│        │ WireGuard                                       │
+│        │                                                 │
+│        │           ┌────────────────────┐                │
+│        │           │  cloudflared       │                │
+│        │           │  (Tunnel Agent)    │                │
+│        │           └────────┬───────────┘                │
+└────────┼────────────────────┼────────────────────────────┘
+         │                    │
+         ▼                    ▼
+    ┌─────────┐       ┌──────────────┐
+    │ VPN     │       │  Cloudflare  │
+    │ Server  │       │  Edge        │
+    └────┬────┘       └──────┬───────┘
+         │                   │
+         ▼                   ▼
+    Public Internet     Zero Trust Access
+    (VPN exit IP)       (https://your-domain.com)
 ```
 
 ## Why these technologies?
@@ -52,7 +58,7 @@ A hardened, VPN-routed remote browser for DeFi and Web3 operations. All traffic 
 - **No open ports** — Your server exposes nothing to the internet; the tunnel connects outbound to Cloudflare
 - **Zero Trust Access** — Enforce email/OTP/SSO authentication before anyone can reach the browser
 - **DDoS protection** — Cloudflare's network sits in front of your service
-- **No VPN client needed for access** — Access your DeFi browser from any device, authenticated through Cloudflare
+- **Token-based setup** — Single environment variable, no config files or credentials to manage
 
 ### Pinned versions over `latest`
 
@@ -67,11 +73,11 @@ All images use fixed version tags (`kasmweb/brave:1.14.0`, `qmcgaw/gluetun:v3.40
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/secure-defi-browser.git
+git clone https://github.com/malaface/secure-defi-browser.git
 cd secure-defi-browser
 
 cp .env.example .env
-# Edit .env with your VPN credentials and a strong browser password
+# Edit .env with your credentials
 ```
 
 ### 2. Get your VPN credentials
@@ -82,53 +88,47 @@ cp .env.example .env
 
 **Other providers:** Check [Gluetun's provider list](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers) for provider-specific env vars.
 
-### 3. Start the stack
+### 3. Set up Cloudflare Tunnel (optional but recommended)
+
+1. Go to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/) > **Networks** > **Tunnels**
+2. Click **Create a tunnel** > name it (e.g., `secure-browser`)
+3. Copy the tunnel token into `CLOUDFLARE_TUNNEL_TOKEN` in your `.env`
+4. Add a **Public Hostname**:
+   - Subdomain: `defi` (or whatever you prefer)
+   - Domain: your Cloudflare domain
+   - Service type: `HTTPS`
+   - URL: `secure-browser-gluetun:6901`
+   - Under **TLS** > enable **No TLS Verify** (required for KasmVNC's self-signed cert)
+5. **MANDATORY:** Go to **Access** > **Applications** > create a policy for your hostname
+
+> **Why `No TLS Verify`?** KasmVNC uses a self-signed HTTPS certificate. The cloudflared agent needs to skip TLS verification for the internal connection. This is safe because the public-facing connection (user → Cloudflare) uses Cloudflare's valid certificate, and Zero Trust Access is the real authentication layer.
+
+### 4. Start the stack
 
 ```bash
 docker compose up -d
 ```
 
-### 4. Verify VPN is active
+### 5. Verify everything works
 
 ```bash
-# Check Gluetun connected successfully
+# Check Gluetun connected to VPN
 docker logs secure-browser-gluetun
 
 # Verify exit IP is from VPN, not your real IP
 docker exec secure-browser-gluetun wget -qO- http://ip-api.com/line/?fields=query,country
+
+# Check all containers are running
+docker compose ps
 ```
 
-### 5. Access the browser
+### 6. Access the browser
 
-Open **https://localhost:6901** in your local browser. Accept the self-signed certificate and log in with your `BROWSER_USER`/`BROWSER_PASSWORD` from `.env`.
+**Locally:** Open **https://localhost:6901** — accept the self-signed certificate, log in with your `BROWSER_USER`/`BROWSER_PASSWORD`.
 
-Inside the remote Brave browser, navigate to [https://ipleak.net](https://ipleak.net) — it should show the VPN server's IP, not yours.
+**Remotely:** Open your Cloudflare hostname (e.g., `https://defi.yourdomain.com`) — authenticate through Cloudflare Access first, then log in to KasmVNC.
 
-## Remote access (Cloudflare Tunnel)
-
-> **Optional but strongly recommended for DeFi.** This lets you access your secure browser from anywhere, protected by Cloudflare Zero Trust authentication.
-
-### Setup
-
-1. Create a tunnel at [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
-2. Download the credentials JSON to `~/.cloudflared/`
-3. Edit `cloudflare-tunnel/tunnel-config.yml`:
-   - Replace `YOUR_TUNNEL_ID` with your tunnel ID
-   - Replace `YOUR_HOSTNAME` with your domain (e.g., `defi.example.com`)
-4. **Configure an Access policy** for your hostname (email OTP, SSO, etc.)
-5. Start the tunnel:
-
-```bash
-cd cloudflare-tunnel
-docker compose -f docker-compose.tunnel.yml up -d
-```
-
-### Why `noTLSVerify: true`?
-
-KasmVNC serves HTTPS with a self-signed certificate. Cloudflare Tunnel needs `noTLSVerify` to accept it. This is safe because:
-- The connection between cloudflared and KasmVNC is **internal to your Docker network**
-- The public-facing connection (user → Cloudflare) uses Cloudflare's valid TLS certificate
-- Zero Trust Access policy is the real authentication layer
+**Verify VPN inside the browser:** Navigate to [https://ipleak.net](https://ipleak.net) — it should show the VPN server's IP and country, not yours.
 
 ## Updating
 
@@ -141,6 +141,7 @@ KasmVNC serves HTTPS with a self-signed certificate. Cloudflare Tunnel needs `no
 
 ```bash
 # 1. Review the changelog for breaking changes
+
 # 2. Update the image tag in docker-compose.yml
 #    Example: kasmweb/brave:1.14.0 → kasmweb/brave:1.15.0
 
@@ -156,7 +157,7 @@ docker exec secure-browser-gluetun wget -qO- http://ip-api.com/line/?fields=quer
 # 6. Open https://localhost:6901 and verify everything works
 ```
 
-Your browser profile (bookmarks, extensions, wallet data) is stored in a Docker volume and survives updates.
+Your browser profile (bookmarks, extensions, wallet data) is stored in a Docker volume and **survives updates**.
 
 ### Rollback
 
@@ -164,29 +165,31 @@ If something breaks after an update:
 
 ```bash
 # 1. Revert the image tag in docker-compose.yml to the previous version
-# 2. Recreate with old image
+
+# 2. Recreate with the old image
 docker compose up -d
 ```
 
 ## Service management
 
 ```bash
-# Start all services
+# Start all services (VPN + Browser + Tunnel)
 docker compose up -d
 
 # Stop all services (preserves data)
 docker compose down
 
 # View logs
-docker compose logs -f           # All services
-docker compose logs -f gluetun   # VPN only
-docker compose logs -f brave     # Browser only
+docker compose logs -f              # All services
+docker compose logs -f gluetun      # VPN only
+docker compose logs -f brave        # Browser only
+docker compose logs -f cloudflared  # Tunnel only
 
 # Restart after config change
 docker compose down && docker compose up -d
 
 # Check resource usage
-docker stats secure-browser-gluetun secure-browser-brave
+docker stats secure-browser-gluetun secure-browser-brave secure-browser-cloudflared
 
 # Full cleanup (WARNING: deletes browser profile and VPN data)
 docker compose down -v
@@ -196,20 +199,18 @@ docker compose down -v
 
 - The browser port (`6901`) is bound to `127.0.0.1` — it is **not accessible** from other machines on your network
 - Gluetun's firewall (`FIREWALL_INPUT_PORTS`) only allows port `6901` inbound through the VPN interface
-- `FIREWALL_OUTBOUND_SUBNETS` allows Docker-internal communication (needed for Cloudflare Tunnel). Adjust to your Docker subnet if you changed defaults
-- Resource limits prevent the browser from consuming all host memory (2GB cap)
-- Log rotation is configured to prevent disk exhaustion
+- `FIREWALL_OUTBOUND_SUBNETS` allows Docker-internal communication (needed for cloudflared to reach gluetun)
+- Resource limits prevent the browser from consuming all host memory (2GB cap for Brave, 256MB for Gluetun/cloudflared)
+- Log rotation is configured on all services to prevent disk exhaustion
+- The Cloudflare Tunnel token is the only credential needed — no config files or JSON credentials to manage
 
 ## File structure
 
 ```
 secure-defi-browser/
-├── docker-compose.yml          # Main stack (Gluetun + Brave)
-├── .env.example                # Template for credentials
-├── .gitignore
-├── cloudflare-tunnel/
-│   ├── docker-compose.tunnel.yml   # Cloudflare Tunnel service
-│   └── tunnel-config.yml           # Tunnel routing config
+├── docker-compose.yml   # All 3 services: Gluetun + Brave + cloudflared
+├── .env.example         # Template for all credentials
+├── .gitignore           # Excludes .env and secrets
 └── README.md
 ```
 

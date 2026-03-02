@@ -1,16 +1,17 @@
-# Secure DeFi Browser - Brave + Gluetun VPN
+# Secure DeFi Browser - Brave + Gluetun VPN + Cloudflare Tunnel
 #
-# All browser traffic is routed through a WireGuard VPN tunnel (ProtonVPN).
-# Access via Cloudflare Tunnel + Zero Trust (recommended) or localhost only.
+# All browser traffic is routed through a WireGuard VPN tunnel.
+# Remote access via Cloudflare Tunnel with Zero Trust authentication.
 #
 # PREREQUISITES:
 # 1. Generate WireGuard credentials from your VPN provider
-# 2. Copy .env.example to .env and fill in your credentials
+# 2. Create a Cloudflare Tunnel and get the token
+# 3. Copy .env.example to .env and fill in your credentials
 #
 # USAGE:
-#   docker compose up -d
-#   docker compose logs -f
-#   docker compose down
+#   docker compose up -d              # Start all services
+#   docker compose logs -f            # View logs
+#   docker compose down               # Stop all services
 
 services:
   # ──────────────────────────────────────────────
@@ -83,6 +84,39 @@ services:
           memory: 2G
         reservations:
           memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ──────────────────────────────────────────────
+  # Cloudflare Tunnel (Zero Trust Access)
+  # Provides remote access without exposing ports to the internet.
+  # The tunnel connects outbound to Cloudflare - no inbound ports needed.
+  # ──────────────────────────────────────────────
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: secure-browser-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep cloudflared || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     logging:
       driver: "json-file"
       options:
