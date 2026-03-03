@@ -1,0 +1,35 @@
+# Reverse proxy with Basic Auth for Secure DeFi Browser
+#
+# Caddy listens on :8443 and proxies to KasmVNC (gluetun:6901).
+# Cloudflare Tunnel points here instead of directly to KasmVNC.
+#
+# This solves the dual Basic Auth problem: Caddy handles its own auth,
+# then injects KasmVNC credentials automatically via header_up.
+# Without this, the browser can only send one Authorization header,
+# so KasmVNC would never receive its credentials.
+#
+# SETUP:
+# 1. Generate a bcrypt hash for your Caddy password:
+#      docker run --rm caddy:2-alpine caddy hash-password --plaintext 'YOUR_PASSWORD'
+#
+# 2. Replace PASTE_YOUR_CADDY_HASH_HERE with the generated hash
+#    (it looks like $2a$14$...)
+#
+# 3. Replace PASTE_YOUR_KASMVNC_BASE64_HERE with:
+#      echo -n "kasm_user:YOUR_KASMVNC_PASSWORD" | base64
+#    (the password is your BROWSER_PASSWORD from .env)
+#
+# 4. Optionally change the username "defi" to whatever you prefer
+
+:8443 {
+	basic_auth {
+		defi PASTE_YOUR_CADDY_HASH_HERE
+	}
+
+	reverse_proxy https://gluetun:6901 {
+		header_up Authorization "Basic PASTE_YOUR_KASMVNC_BASE64_HERE"
+		transport http {
+			tls_insecure_skip_verify
+		}
+	}
+}

@@ -11,6 +11,7 @@
 gluetun_data/
 brave_profile/
 kasm_profile/
+caddy_data/
 
 # OS files
 .DS_Store

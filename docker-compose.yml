@@ -1,12 +1,20 @@
-# Secure DeFi Browser - Brave + Gluetun VPN + Cloudflare Tunnel
+# Secure DeFi Browser - Brave + Gluetun VPN + Caddy + Cloudflare Tunnel
 #
 # All browser traffic is routed through a WireGuard VPN tunnel.
 # Remote access via Cloudflare Tunnel with Zero Trust authentication.
 #
+# SECURITY LAYERS:
+#   1. Cloudflare Access (Zero Trust) - email OTP/SSO before reaching the server
+#   2. Caddy HTTP Basic Auth - username + password on the reverse proxy
+#   3. KasmVNC password (VNC_PW) - browser session password
+#
 # PREREQUISITES:
 # 1. Generate WireGuard credentials from your VPN provider
-# 2. Create a Cloudflare Tunnel and get the token
-# 3. Copy .env.example to .env and fill in your credentials
+# 2. Copy .env.example to .env and fill in your credentials
+# 3. Generate Caddy Basic Auth hash and paste it in the Caddyfile:
+#      docker run --rm caddy:2-alpine caddy hash-password --plaintext 'YOUR_PASSWORD'
+# 4. Create a Cloudflare Tunnel and get the token
+# 5. Configure an Access policy for your hostname
 #
 # USAGE:
 #   docker compose up -d              # Start all services
@@ -19,7 +27,7 @@ services:
   # All network traffic from the browser exits here.
   # ──────────────────────────────────────────────
   gluetun:
-    image: qmcgaw/gluetun:v3.40.0
+    image: qmcgaw/gluetun:v3.41.1
     container_name: secure-browser-gluetun
     restart: unless-stopped
     cap_add:
@@ -37,6 +45,9 @@ services:
       - SERVER_COUNTRIES=${VPN_SERVER_COUNTRIES:-Switzerland}
       - FIREWALL_INPUT_PORTS=6901
       - FIREWALL_OUTBOUND_SUBNETS=${FIREWALL_OUTBOUND_SUBNETS:-172.16.0.0/12}
+      - DOT=off
+      - DNS_ADDRESS=9.9.9.9
+      - HEALTH_VPN_DURATION_INITIAL=120s
       - TZ=${TZ:-UTC}
     volumes:
       - gluetun_data:/gluetun
@@ -47,7 +58,7 @@ services:
         reservations:
           memory: 128M
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8000/v1/publicip/ip || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/v1/vpn/status | grep -q running || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -74,16 +85,42 @@ services:
     shm_size: "2gb"
     environment:
       - VNC_PW=${BROWSER_PASSWORD}
-      - VNC_USER=${BROWSER_USER:-user}
       - TZ=${TZ:-UTC}
     volumes:
-      - brave_profile:/home/kasm-user/.config/BraveSoftware
+      - brave_profile:/home/kasm-user
     deploy:
       resources:
         limits:
           memory: 2G
         reservations:
           memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ──────────────────────────────────────────────
+  # Reverse Proxy with Basic Auth (Caddy)
+  # Security layer 2: requires username + password
+  # before proxying traffic to KasmVNC.
+  # ──────────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: secure-browser-caddy
+    restart: unless-stopped
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
     logging:
       driver: "json-file"
       options:
@@ -126,3 +163,4 @@ services:
 volumes:
   gluetun_data:
   brave_profile:
+  caddy_data:
