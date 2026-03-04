@@ -6,7 +6,7 @@
 # SECURITY LAYERS:
 #   1. Cloudflare Access (Zero Trust) - email OTP/SSO before reaching the server
 #   2. Caddy HTTP Basic Auth - username + password on the reverse proxy
-#   3. KasmVNC password (VNC_PW) - browser session password
+#   KasmVNC BasicAuth is disabled to avoid dual Authorization header conflicts.
 #
 # PREREQUISITES:
 # 1. Generate WireGuard credentials from your VPN provider
@@ -85,6 +85,7 @@ services:
     shm_size: "2gb"
     environment:
       - VNC_PW=${BROWSER_PASSWORD}
+      - VNCOPTIONS=-disableBasicAuth
       - TZ=${TZ:-UTC}
     volumes:
       - brave_profile:/home/kasm-user
@@ -149,7 +150,7 @@ services:
         reservations:
           memory: 128M
     healthcheck:
-      test: ["CMD-SHELL", "pgrep cloudflared || exit 1"]
+      test: ["CMD", "cloudflared", "version"]
       interval: 30s
       timeout: 10s
       retries: 3
