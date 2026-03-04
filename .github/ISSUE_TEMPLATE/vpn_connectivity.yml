@@ -1,0 +1,60 @@
+name: VPN / Connectivity Issue
+description: Report VPN connection failures, IP leaks, or network problems
+title: "[VPN]: "
+labels: ["bug", "vpn"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for VPN-specific issues like connection failures, IP leaks, or DNS problems.
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      options:
+        - VPN fails to connect
+        - IP leak detected (real IP visible)
+        - DNS leak detected
+        - Connection drops frequently
+        - Slow connection through VPN
+        - Kill switch not working
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the issue in detail.
+    validations:
+      required: true
+
+  - type: textarea
+    id: vpn-config
+    attributes:
+      label: VPN Configuration (sanitized)
+      description: Share your VPN settings (DO NOT share private keys or tokens).
+      value: |
+        - VPN Provider:
+        - VPN Type: WireGuard / OpenVPN
+        - Server Country:
+        - Gluetun version:
+      render: yaml
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic Output
+      description: Run these commands and paste the output.
+      render: shell
+      placeholder: |
+        # Check VPN status
+        docker inspect secure-browser-gluetun --format='{{.State.Health.Status}}'
+
+        # Check IP (should show VPN IP, not real IP)
+        docker exec secure-browser-gluetun wget -qO- http://ip-api.com/line/?fields=query,country
+
+        # Gluetun logs
+        docker compose logs --tail=30 gluetun

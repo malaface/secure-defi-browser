@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/malaface/secure-defi-browser/blob/main/SECURITY.md
+    about: For security vulnerabilities, please follow our responsible disclosure process.
+  - name: Discussions
+    url: https://github.com/malaface/secure-defi-browser/discussions
+    about: For questions and general help, use Discussions instead of Issues.

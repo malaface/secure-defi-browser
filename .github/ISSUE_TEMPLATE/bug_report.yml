@@ -1,0 +1,66 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the details below so we can reproduce and fix it.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      description: Which service is affected?
+      options:
+        - Gluetun (VPN)
+        - Brave / KasmVNC (Browser)
+        - Caddy (Reverse Proxy)
+        - Cloudflared (Tunnel)
+        - Docker Compose (General)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What happened? What did you expect to happen?
+      placeholder: "When I try to connect to KasmVNC, I see a 502 error..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this?
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Paste any relevant container logs here.
+      render: shell
+      placeholder: |
+        docker compose logs -f [service-name]
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your setup details.
+      value: |
+        - OS:
+        - Docker version:
+        - VPN Provider:
+        - Browser (client):
+    validations:
+      required: true
