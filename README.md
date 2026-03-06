@@ -1,6 +1,6 @@
 # Secure DeFi Browser
 
-A hardened, VPN-routed remote browser for DeFi and Web3 operations. All traffic exits through a WireGuard VPN tunnel — your real IP is never exposed to the sites you visit.
+A hardened, VPN-routed remote desktop for DeFi and Web3 operations. All traffic exits through a WireGuard VPN tunnel — your real IP is never exposed to the sites you visit.
 
 ```
   User (remote)
@@ -26,32 +26,33 @@ A hardened, VPN-routed remote browser for DeFi and Web3 operations. All traffic 
          v
 +------------------+
 |  Gluetun         |  VPN Gateway (WireGuard)
-|  :6901           |  Layer 3: KasmVNC login (VNC_PW)
-|                  |  Kill switch: if VPN drops, all traffic is blocked
+|  :6901           |  Kill switch: if VPN drops, all traffic is blocked
 +--------+---------+
          | network_mode: "service:gluetun"
          v
 +------------------+
-|  Brave           |  Isolated browser - all traffic goes through VPN
+|  Ubuntu Desktop  |  Full XFCE desktop - install any browser + wallets
 |  (KasmVNC)       |  Real IP never exposed
 +------------------+
 ```
 
-## Why these technologies?
+## Why Ubuntu Desktop instead of a single-browser image?
 
-### Brave over Firefox/Chrome
+Previous versions used `kasmweb/brave:1.14.0` (Brave-only). We migrated to `kasmweb/ubuntu-jammy-desktop:1.16.1` for these reasons:
 
-- **Built-in wallet** — Native support for Ethereum, Solana, and other chains without extensions
-- **Shields** — Aggressive ad/tracker blocking enabled by default, critical for DeFi sites loaded with trackers
-- **Fingerprint protection** — Randomizes browser fingerprint, making cross-site tracking harder
-- **No telemetry risk** — Unlike Chrome, no data sent to Google while you interact with your wallets
+- **Multi-browser flexibility** — DeFi dApps have variable compatibility. Some work better on Chrome, others on Firefox or Brave. With a full desktop you can install any browser and switch as needed
+- **Wallet extension freedom** — Many protocols require MetaMask or specific wallet extensions that may not be available or work well in Brave's built-in wallet. Install any extension on any browser
+- **Full desktop environment** — File manager, terminal, calculator, screenshot tools, and other utilities needed during trading sessions
+- **Persistent workspace** — The entire `/home/kasm-user` directory is stored in a Docker volume. Browser profiles, bookmarks, wallet data, and desktop settings survive restarts and updates
+
+The security architecture is identical — `network_mode: "service:gluetun"` forces all traffic through the VPN regardless of which browser you use.
 
 ### Gluetun over running VPN on the host
 
-- **Container-level isolation** — Only the browser goes through the VPN; your other services keep their normal routing
+- **Container-level isolation** — Only the desktop goes through the VPN; your other services keep their normal routing
 - **Kill switch built-in** — If the VPN drops, Gluetun's firewall blocks all traffic automatically. No IP leak possible
 - **60+ VPN providers** — Works with ProtonVPN, Mullvad, NordVPN, Surfshark, IVPN, and [many more](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers)
-- **`network_mode: "service:gluetun"`** — The browser container has no network interface of its own. It physically cannot bypass the VPN
+- **`network_mode: "service:gluetun"`** — The desktop container has no network interface of its own. It physically cannot bypass the VPN
 
 ### Caddy as auth proxy
 
@@ -64,18 +65,18 @@ A hardened, VPN-routed remote browser for DeFi and Web3 operations. All traffic 
 - **Browser-based access** — Connect via any browser at `https://localhost:6901`, no VNC client needed
 - **HTTPS by default** — Self-signed TLS out of the box, encrypted connection even locally
 - **Better performance** — WebSocket-based streaming is faster and more efficient than classic VNC protocols
-- **Clipboard support** — Copy/paste works between your local machine and the remote browser
+- **Clipboard support** — Copy/paste works between your local machine and the remote desktop
 
 ### Cloudflare Tunnel over port forwarding
 
 - **No open ports** — Your server exposes nothing to the internet; the tunnel connects outbound to Cloudflare
-- **Zero Trust Access** — Enforce email/OTP/SSO authentication before anyone can reach the browser
+- **Zero Trust Access** — Enforce email/OTP/SSO authentication before anyone can reach the desktop
 - **DDoS protection** — Cloudflare's network sits in front of your service
 - **Token-based setup** — Single environment variable, no config files or credentials to manage
 
 ### Pinned versions over `latest`
 
-All images use fixed version tags (`kasmweb/brave:1.14.0`, `qmcgaw/gluetun:v3.41.1`) instead of `:latest`:
+All images use fixed version tags (`kasmweb/ubuntu-jammy-desktop:1.16.1`, `qmcgaw/gluetun:v3.41.1`) instead of `:latest`:
 
 - **Supply chain safety** — A compromised `:latest` tag could inject malicious code into your DeFi environment
 - **Reproducibility** — Your setup works the same today as it will in 6 months
@@ -152,19 +153,39 @@ docker exec secure-browser-gluetun wget -qO- http://ip-api.com/line/?fields=quer
 docker compose ps
 ```
 
-### 7. Access the browser
+### 7. Access the desktop
 
-**Locally:** Open **https://localhost:6901** — accept the self-signed certificate, log in with user `kasm_user` and your `BROWSER_PASSWORD`.
+**Locally:** Open **https://localhost:6901** — accept the self-signed certificate, log in with your `BROWSER_PASSWORD`.
 
 **Remotely:** Open your Cloudflare hostname (e.g., `https://defi.yourdomain.com`) — authenticate through Cloudflare Access first, then enter Caddy Basic Auth credentials. KasmVNC auth is handled automatically by Caddy.
 
-**Verify VPN inside the browser:** Navigate to [https://ipleak.net](https://ipleak.net) — it should show the VPN server's IP and country, not yours.
+**Verify VPN inside the desktop:** Open a browser and navigate to [https://ipleak.net](https://ipleak.net) — it should show the VPN server's IP and country, not yours.
+
+### 8. Install your browsers and wallets
+
+Once inside the desktop, open a terminal and install what you need:
+
+```bash
+# Brave
+sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
+sudo apt update && sudo apt install -y brave-browser
+
+# Chrome
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo dpkg -i google-chrome-stable_current_amd64.deb
+sudo apt --fix-broken install -y
+
+# Firefox is pre-installed
+```
+
+All installations persist across restarts thanks to the `desktop_home` volume.
 
 ## Updating
 
 ### Check for new versions
 
-- **Brave:** [kasmtech/workspaces-images releases](https://github.com/kasmtech/workspaces-images/releases)
+- **Ubuntu Desktop:** [kasmtech/workspaces-images releases](https://github.com/kasmtech/workspaces-images/releases)
 - **Gluetun:** [qdm12/gluetun releases](https://github.com/qdm12/gluetun/releases)
 
 ### Update process
@@ -173,7 +194,7 @@ docker compose ps
 # 1. Review the changelog for breaking changes
 
 # 2. Update the image tag in docker-compose.yml
-#    Example: kasmweb/brave:1.14.0 -> kasmweb/brave:1.15.0
+#    Example: kasmweb/ubuntu-jammy-desktop:1.16.1 -> kasmweb/ubuntu-jammy-desktop:1.17.0
 
 # 3. Pull the new images
 docker compose pull
@@ -187,7 +208,7 @@ docker exec secure-browser-gluetun wget -qO- http://ip-api.com/line/?fields=quer
 # 6. Open https://localhost:6901 and verify everything works
 ```
 
-Your browser profile (bookmarks, extensions, wallet data) is stored in a Docker volume and **survives updates**.
+Your desktop profile (browsers, bookmarks, extensions, wallet data) is stored in a Docker volume and **survives updates**.
 
 ### Rollback
 
@@ -203,7 +224,7 @@ docker compose up -d
 ## Service management
 
 ```bash
-# Start all services (VPN + Browser + Caddy + Tunnel)
+# Start all services (VPN + Desktop + Caddy + Tunnel)
 docker compose up -d
 
 # Stop all services (preserves data)
@@ -212,7 +233,7 @@ docker compose down
 # View logs
 docker compose logs -f              # All services
 docker compose logs -f gluetun      # VPN only
-docker compose logs -f brave        # Browser only
+docker compose logs -f desktop      # Desktop only
 docker compose logs -f caddy        # Reverse proxy
 docker compose logs -f cloudflared  # Tunnel only
 
@@ -220,11 +241,19 @@ docker compose logs -f cloudflared  # Tunnel only
 docker compose down && docker compose up -d
 
 # Check resource usage
-docker stats secure-browser-gluetun secure-browser-brave secure-browser-caddy secure-browser-cloudflared
+docker stats secure-browser-gluetun secure-browser-desktop secure-browser-caddy secure-browser-cloudflared
 
-# Full cleanup (WARNING: deletes browser profile and VPN data)
+# Full cleanup (WARNING: deletes desktop profile and VPN data)
 docker compose down -v
 ```
+
+## Resource recommendations
+
+The desktop container is limited to **3 GB RAM** and **2 CPU cores** by default. Tips to stay within limits:
+
+- Close browser tabs you are not actively using — each tab is a separate process consuming 50-200 MB
+- Avoid running multiple browsers simultaneously unless necessary
+- If you need more resources, adjust the `deploy.resources.limits` in `docker-compose.yml`
 
 ## Troubleshooting
 
@@ -243,11 +272,11 @@ If you see `Unable to load a failsafe session` or `Permission denied` on `.confi
 
 ```bash
 # The volume mount may have corrupted permissions. Clean restart:
-docker compose down -v    # WARNING: deletes browser profile
+docker compose down -v    # WARNING: deletes desktop profile
 docker compose up -d      # Fresh start with correct permissions
 ```
 
-The `brave_profile` volume mounts at `/home/kasm-user` (the full home directory). Mounting at a subdirectory like `.config/BraveSoftware` causes Docker to create parent directories as root, breaking XFCE's ability to create `.config/xfce4`.
+The `desktop_home` volume mounts at `/home/kasm-user` (the full home directory). Mounting at a subdirectory causes Docker to create parent directories as root, breaking XFCE's ability to create its config.
 
 ### 401 Unauthorized through Cloudflare Tunnel
 
@@ -263,10 +292,10 @@ Gluetun v3.41+ requires authentication for `/v1/publicip/ip`. The healthcheck us
 
 ## Security notes
 
-- The browser port (`6901`) is bound to `127.0.0.1` — it is **not accessible** from other machines on your network
+- The desktop port (`6901`) is bound to `127.0.0.1` — it is **not accessible** from other machines on your network
 - Gluetun's firewall (`FIREWALL_INPUT_PORTS`) only allows port `6901` inbound through the VPN interface
 - `FIREWALL_OUTBOUND_SUBNETS` allows Docker-internal communication (needed for caddy/cloudflared to reach gluetun)
-- Resource limits prevent the browser from consuming all host memory (2GB cap for Brave, 256MB for Gluetun/cloudflared)
+- Resource limits prevent the desktop from consuming all host memory (3GB cap for Desktop, 256MB for Gluetun/cloudflared)
 - Log rotation is configured on all services to prevent disk exhaustion
 - `DOT=off` disables DNS over TLS inside Gluetun to prevent timeout issues with some VPN providers. DNS queries go to `9.9.9.9` (Quad9) in plaintext through the VPN tunnel, which is still encrypted end-to-end by WireGuard
 - The Cloudflare Tunnel token is the only credential needed — no config files or JSON credentials to manage
@@ -275,7 +304,7 @@ Gluetun v3.41+ requires authentication for `/v1/publicip/ip`. The healthcheck us
 
 ```
 secure-defi-browser/
-├── docker-compose.yml   # All 4 services: Gluetun + Brave + Caddy + cloudflared
+├── docker-compose.yml   # All 4 services: Gluetun + Desktop + Caddy + cloudflared
 ├── Caddyfile            # Reverse proxy config with Basic Auth
 ├── .env.example         # Template for all credentials
 ├── .gitignore           # Excludes .env and secrets

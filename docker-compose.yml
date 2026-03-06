@@ -1,6 +1,7 @@
-# Secure DeFi Browser - Brave + Gluetun VPN + Caddy + Cloudflare Tunnel
+# Secure DeFi Browser - Ubuntu Desktop + Gluetun VPN + Caddy + Cloudflare Tunnel
 #
-# All browser traffic is routed through a WireGuard VPN tunnel.
+# Full Ubuntu desktop remote environment for DeFi/Web3 operations.
+# All traffic is routed through a WireGuard VPN tunnel.
 # Remote access via Cloudflare Tunnel with Zero Trust authentication.
 #
 # SECURITY LAYERS:
@@ -24,7 +25,7 @@
 services:
   # ──────────────────────────────────────────────
   # VPN Gateway (Gluetun)
-  # All network traffic from the browser exits here.
+  # All network traffic from the desktop exits here.
   # ──────────────────────────────────────────────
   gluetun:
     image: qmcgaw/gluetun:v3.41.1
@@ -35,7 +36,7 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     ports:
-      # Brave KasmVNC HTTPS - bound to localhost only
+      # KasmVNC HTTPS - bound to localhost only
       - "127.0.0.1:6901:6901"
     environment:
       - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:-protonvpn}
@@ -70,13 +71,15 @@ services:
         max-file: "3"
 
   # ──────────────────────────────────────────────
-  # Brave Browser (KasmVNC)
-  # Runs inside Gluetun's network namespace.
+  # Ubuntu Desktop (KasmVNC)
+  # Full XFCE desktop inside Gluetun's network namespace.
   # Zero direct internet access - everything goes through the VPN.
+  # Install any browser (Brave, Chrome, Firefox) and wallet
+  # extensions directly from the desktop.
   # ──────────────────────────────────────────────
-  brave:
-    image: kasmweb/brave:1.14.0
-    container_name: secure-browser-brave
+  desktop:
+    image: kasmweb/ubuntu-jammy-desktop:1.16.1
+    container_name: secure-browser-desktop
     restart: unless-stopped
     network_mode: "service:gluetun"
     depends_on:
@@ -85,14 +88,17 @@ services:
     shm_size: "2gb"
     environment:
       - VNC_PW=${BROWSER_PASSWORD}
+      - VNC_USER=${BROWSER_USER:-user}
       - VNCOPTIONS=-disableBasicAuth
+      - KASM_VNC_GEOMETRY=1920x1080
       - TZ=${TZ:-UTC}
     volumes:
-      - brave_profile:/home/kasm-user
+      - desktop_home:/home/kasm-user
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: 3G
+          cpus: "2.0"
         reservations:
           memory: 1G
     logging:
@@ -163,5 +169,5 @@ services:
 
 volumes:
   gluetun_data:
-  brave_profile:
+  desktop_home:
   caddy_data:
